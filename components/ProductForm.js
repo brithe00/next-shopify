@@ -1,9 +1,28 @@
-import { useState, useContext } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { formatter } from '../utils/helpers';
 import ProductOptions from './ProductOptions';
 import { CartContext } from '../context/shopContext';
+import useSWR from 'swr';
+import axios from 'axios';
+
+const fetcher = (url, id) =>
+	axios
+		.get(url, {
+			params: {
+				id: id,
+			},
+		})
+		.then((res) => res.data);
 
 export default function ProductForm({ product }) {
+	const { data: productInventory } = useSWR(
+		['/api/available', product.handle],
+		(url, id) => fetcher(url, id),
+		{ errorRetryCount: 3 }
+	);
+
+	const [available, setAvailable] = useState(true);
+
 	const { addToCart } = useContext(CartContext);
 
 	const allVariantsOptions = product.variants.edges?.map((variant) => {
@@ -53,6 +72,20 @@ export default function ProductForm({ product }) {
 		});
 	}
 
+	useEffect(() => {
+		if (productInventory) {
+			const checkAvailable = productInventory?.variants.edges.filter(
+				(item) => item.node.id === selectedVariant.id
+			);
+
+			if (checkAvailable[0].node.availableForSale) {
+				setAvailable(true);
+			} else {
+				setAvailable(false);
+			}
+		}
+	}, [productInventory, selectedVariant]);
+
 	return (
 		<div className="rounded-2xl p-4 shadow-lg flex flex-col w-full md:w-1/3">
 			<h2 className="text-2xl font-bold">{product.title}</h2>
@@ -68,12 +101,19 @@ export default function ProductForm({ product }) {
 					setOptions={setOptions}
 				/>
 			))}
-			<button
-				onClick={() => addToCart(selectedVariant)}
-				className="bg-black rounded-lg text-white px-2 py-3 mt-3 hover:bg-gray-800"
-			>
-				Add To Cart
-			</button>
+
+			{available ? (
+				<button
+					onClick={() => addToCart(selectedVariant)}
+					className="bg-black rounded-lg text-white px-2 py-3 mt-3 hover:bg-gray-800"
+				>
+					Add To Cart
+				</button>
+			) : (
+				<button className="rounded-lg text-white px-2 py-3 mt-3 bg-gray-800 cursor-not-allowed">
+					Sold out!
+				</button>
+			)}
 		</div>
 	);
 }
